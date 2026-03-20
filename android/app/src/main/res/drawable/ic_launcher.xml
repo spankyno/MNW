@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="2732.000000dp"
-    android:height="2732.000000dp"
-    android:viewportWidth="2732.000000"
-    android:viewportHeight="2732.000000">
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="2732"
+    android:viewportHeight="2732">
+
+    <!-- Fondo opcional para que el logo negro sea visible -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M1366,1366m-1366,0a1366,1366 0,1 1,2732 0a1366,1366 0,1 1,-2732 0" />
 
     <group
             android:translateY="2732.000000"
