@@ -163,10 +163,21 @@ export default function App() {
         
         const newLocalNotes: Note[] = files.map((f: any) => {
           const existing = existingLocalNotes.find(n => n.id === f.name);
+          let content = existing?.content || '';
+          
+          // If content is empty, try to read it from disk for the preview
+          if (!content && window.AndroidBridge) {
+            try {
+              content = window.AndroidBridge.readFile(uri, f.name);
+            } catch (e) {
+              console.error('Error reading file for preview:', f.name, e);
+            }
+          }
+
           return {
             id: f.name,
             title: f.name.replace('.txt', ''),
-            content: existing?.content || '',
+            content: content,
             created_at: new Date(f.lastModified).toISOString(),
             updated_at: new Date(f.lastModified).toISOString(),
             is_local: true,
@@ -256,12 +267,27 @@ export default function App() {
       let savedNotes: any = null;
 
       if (window.AndroidBridge) {
+        console.log('MNW: Loading data from AndroidBridge');
         const settingsStr = window.AndroidBridge.getSetting('mnw_settings', '');
-        if (settingsStr) savedSettings = JSON.parse(settingsStr);
+        console.log('MNW: Loaded settings string:', settingsStr);
+        if (settingsStr) {
+          try {
+            savedSettings = JSON.parse(settingsStr);
+          } catch (e) {
+            console.error('MNW: Error parsing settings:', e);
+          }
+        }
         
         const notesStr = window.AndroidBridge.getSetting('mnw_local_notes', '');
-        if (notesStr) savedNotes = JSON.parse(notesStr);
+        if (notesStr) {
+          try {
+            savedNotes = JSON.parse(notesStr);
+          } catch (e) {
+            console.error('MNW: Error parsing notes:', e);
+          }
+        }
       } else {
+        console.log('MNW: Loading data from localStorage');
         const localSettingsStr = localStorage.getItem('mnw_settings');
         if (localSettingsStr) savedSettings = JSON.parse(localSettingsStr);
         
@@ -270,15 +296,20 @@ export default function App() {
       }
 
       if (savedSettings) {
+        console.log('MNW: Applying saved settings:', savedSettings);
         setSettings(savedSettings);
         if (savedSettings.localDirectoryUri && window.AndroidBridge) {
+          console.log('MNW: Fetching local notes for URI:', savedSettings.localDirectoryUri);
           // Pass loaded notes to fetchLocalNotes to preserve favorites
           fetchLocalNotes(savedSettings.localDirectoryUri, savedNotes || []);
         }
       }
 
-      if (savedNotes) {
-        setNotes(savedNotes);
+      if (savedNotes && savedNotes.length > 0) {
+        setNotes(prev => {
+          const webNotes = prev.filter(n => !n.is_local);
+          return [...webNotes, ...savedNotes];
+        });
       } else if (!window.AndroidBridge) {
         setNotes(MOCK_NOTES);
       }
@@ -620,7 +651,7 @@ export default function App() {
       newHistory.pop();
       const previousContent = newHistory[newHistory.length - 1];
       setHistory(newHistory);
-      handleSaveNote(previousContent);
+      setSelectedNote(prev => prev ? { ...prev, content: previousContent } : null);
     }
   };
 
@@ -1075,11 +1106,12 @@ export default function App() {
                 >
                   <Heart className={cn("w-5 h-5", selectedNote.is_favorite && "fill-current")} />
                 </button>
-                {selectedNote.is_local && (
-                  <button className="p-2 bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-500/20 ml-1">
-                    <Save className="w-5 h-5" />
-                  </button>
-                )}
+                <button 
+                  onClick={() => handleSaveNote(selectedNote.content)}
+                  className="p-2 bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-500/20 ml-1 hover:bg-emerald-600 transition-colors"
+                >
+                  <Save className="w-5 h-5" />
+                </button>
                 <button 
                   onClick={() => handleDeleteNote(selectedNote.id, selectedNote.is_local)}
                   className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 rounded-xl transition-colors ml-1"
@@ -1103,7 +1135,7 @@ export default function App() {
                   value={selectedNote.content}
                   onChange={(e) => {
                     const newContent = e.target.value;
-                    handleSaveNote(newContent);
+                    setSelectedNote(prev => prev ? { ...prev, content: newContent } : null);
                     if (newContent !== history[history.length - 1]) {
                       setHistory([...history, newContent]);
                     }
