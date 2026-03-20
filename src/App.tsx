@@ -128,6 +128,39 @@ export default function App() {
   }>({ type: null });
 
   // Initialize data
+  const fetchNotes = useCallback(async (userId: string) => {
+    if (!isSupabaseConfigured) return;
+    
+    console.log('Fetching notes for user:', userId);
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching notes:', error);
+      return;
+    }
+
+    if (data) {
+      console.log('Fetched notes:', data.length);
+      const webNotes = data.map((n: any) => ({
+        ...n,
+        is_local: false,
+        is_favorite: n.is_favorite || false,
+      }));
+      
+      setNotes(currentNotes => {
+        const localNotes = currentNotes.filter(n => n.is_local);
+        // Avoid duplicates if any
+        const localIds = new Set(localNotes.map(n => n.id));
+        const uniqueWebNotes = webNotes.filter((n: any) => !localIds.has(n.id));
+        return [...localNotes, ...uniqueWebNotes];
+      });
+    }
+  }, []);
+
   useEffect(() => {
     const savedNotes = localStorage.getItem('mnw_local_notes');
     if (savedNotes) {
@@ -143,16 +176,27 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          fetchNotes(currentUser.id);
+        }
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          fetchNotes(currentUser.id);
+        } else {
+          // Clear web notes on logout
+          setNotes(currentNotes => currentNotes.filter(n => n.is_local));
+        }
       });
 
       return () => subscription.unsubscribe();
     }
-  }, []);
+  }, [fetchNotes]);
 
   // Persist local notes
   useEffect(() => {
